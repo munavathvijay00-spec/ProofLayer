@@ -39,3 +39,7 @@
 6. Explain the boundary: independent authorization of tool calls, not a claim to detect every injection or sandbox arbitrary code.
 
 Live evaluation jobs run in the backend process and are polled through the API. Restarts mark unfinished jobs interrupted; jobs are not retried automatically. Model and Vercel/Render credentials were not configured, so no live-provider result or hosted deployment is claimed.
+
+## Local model demo without API charges
+
+Use the Ollama setup in README.md on your Mac and run both services there. Do not set `MODEL_PROVIDER=ollama` on Render unless an Ollama server is actually reachable from that backend. A remote backend cannot use your Mac's localhost. The Cloud Browser replay remains available without model credentials.

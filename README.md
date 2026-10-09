@@ -39,6 +39,32 @@ Open http://localhost:3000. Select **Email exfiltration**, run **protected**, th
 
 Backend variables are process environment variables. Uvicorn does not automatically load `.env`; use `--env-file` with `python-dotenv` installed or export variables in your shell. Next.js automatically reads `.env.local`.
 
+## Free local model on Mac (Ollama)
+
+A 16 GB Apple Silicon Mac is a reasonable starting point for `qwen3:4b` (the model download is approximately 2.5 GB; runtime memory is higher). Speed and tool-calling reliability must be measured on your Mac.
+
+1. Install the Mac app from https://ollama.com/download/mac and open it.
+2. In Terminal, download the model: `ollama pull qwen3:4b`.
+3. From this repository, run:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+npm ci --prefix frontend
+export MODEL_PROVIDER=ollama
+export OLLAMA_MODEL=qwen3:4b
+python3 scripts/dev.py
+```
+
+Open http://localhost:3000, choose **Live model**, and run **protected**. No OpenAI account or API key is needed. Leave the Ollama app running; alternatively run `ollama serve` in a separate terminal if its server is not running. The backend connects to `http://127.0.0.1:11434/api/chat`, with thinking disabled, 8K context, and a 120-second timeout per request. `OLLAMA_BASE_URL` can override the server origin as a backend administrator setting.
+
+The agent uses Ollama's native object tool arguments and named tool feedback. Every proposal still passes through the execution gateway. JSON evidence includes model and provider. Health reports configuration, not a successful model probe; missing models or an offline server produce a failed run with an explanation. A local model may ignore the injection, emit invalid arguments, or fail to finish. Report observed outcomes honestly.
+
+Ollama must run on the **backend computer**. The remote Cloud Browser preview and a hosted Render backend cannot access your Mac's localhost. Run both ProofLayer services on your Mac for the free live demo; cloud preview remains in replay mode. Ollama adapter tests use synthetic transport; no actual Ollama inference was run in this development environment.
+
+References: https://docs.ollama.com/capabilities/tool-calling and https://ollama.com/library/qwen3:4b.
+
 ## Live model mode
 
 Set `OPENAI_API_KEY` on the backend only, optionally `OPENAI_MODEL` (default `gpt-4.1-mini`), then restart it. The dashboard enables **Live model** when the server reports a configured key. A configured key does not guarantee account/model access.
@@ -86,7 +112,7 @@ cd backend
 python -m pytest -q
 ```
 
-35 security/API tests cover denial without dispatch, malformed arguments, cross-task tokens, expiry, no privilege escalation, closed runs, transaction rollback, same-call replay, concurrency, continuation, and the model adapter protocol using a fake provider transport.
+38 security/API tests cover denial without dispatch, malformed arguments, cross-task tokens, expiry, no privilege escalation, closed runs, transaction rollback, same-call replay, concurrency, continuation, and the model adapter protocol using a fake provider transport.
 
 ```bash
 cd frontend
@@ -117,7 +143,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for Render backend and Vercel frontend setup.
 
 ## Verified build status
 
-See `evidence/verification.json` and `evidence/test-results.xml`: 35 backend tests passed; the Next.js production build, frontend HTTP rendering, backend HTTP evaluation, and allowed-origin CORS check passed. Desktop browser checks passed for the same-origin API connection, protected and baseline runs, evaluation, evidence download, policy navigation, and saved-run inspection. The actual console image and browser-exported evaluation are in `evidence/`. Mobile viewport checks remain pending; the smoke harness is provided for local/CI use. Live-provider trials and public deployment remain pending.
+See `evidence/verification.json` and `evidence/test-results.xml`: The previous verification bundle recorded 35 backend tests; the Ollama update adds three more tests. The original Next.js production build, frontend HTTP rendering, backend HTTP evaluation, and allowed-origin CORS check passed. Desktop browser checks passed for the same-origin API connection, protected and baseline runs, evaluation, evidence download, policy navigation, and saved-run inspection. The actual console image and browser-exported evaluation are in `evidence/`. Mobile viewport checks remain pending; the smoke harness is provided for local/CI use. Live-provider trials and public deployment remain pending.
 
 ## Team ownership for the next 24 hours
 

@@ -5,7 +5,7 @@ from .schemas import Action, RunRequest, TaskRequest, Proposal, EvaluationReques
 from .policy import POLICY, evaluate
 from .store import Store
 from .gateway import Gateway
-from .agent import run_agent
+from .agent import run_agent, model_config
 from .scenarios import SCENARIOS
 from .evaluation import evaluate_suite as run_suite, run_live_job
 
@@ -23,7 +23,7 @@ def console_auth(x_console_key: str = Header(default='')):
 
 @app.get('/health')
 def health():
-    return {'status':'ok','version':'0.3.0','live_available':bool(os.getenv('OPENAI_API_KEY')),'executor':'local-synthetic-lab'}
+    return {'status':'ok','version':'0.3.0','live_available':model_config()['available'],'model_provider':model_config()['provider'],'model':model_config()['model'],'executor':'local-synthetic-lab'}
 @app.get('/policy',dependencies=[Depends(console_auth)])
 def policy(): return POLICY
 @app.get('/scenarios',dependencies=[Depends(console_auth)])
@@ -42,8 +42,8 @@ def proposal(task_id:str, req:Proposal, run_id:str=Query(...), authorization:str
     except ValueError as exc: raise HTTPException(409,str(exc))
 @app.post('/runs',dependencies=[Depends(console_auth)])
 def run(req:RunRequest):
-    if req.agent_mode == 'live' and not os.getenv('OPENAI_API_KEY'):
-        raise HTTPException(503,'Live mode requires backend OPENAI_API_KEY; replay mode remains available')
+    if req.agent_mode == 'live' and not model_config()['available']:
+        raise HTTPException(503,'Configure local Ollama or a backend OpenAI key; replay remains available')
     return run_agent(store,gateway,req.scenario,req.protected,req.agent_mode)
 @app.get('/runs/{run_id}',dependencies=[Depends(console_auth)])
 def get_run(run_id:str):
@@ -64,8 +64,8 @@ def events(limit:int=Query(100,ge=1,le=200)): return store.events(limit)
 def metrics(): return store.metrics()
 @app.post('/evaluations',dependencies=[Depends(console_auth)])
 def evaluate_suite(background_tasks:BackgroundTasks,response:Response,req:EvaluationRequest = EvaluationRequest()):
-    if req.agent_mode=='live' and not os.getenv('OPENAI_API_KEY'):
-        raise HTTPException(503,'Live evaluations require backend OPENAI_API_KEY')
+    if req.agent_mode=='live' and not model_config()['available']:
+        raise HTTPException(503,'Configure local Ollama or a backend OpenAI key for live evaluations')
     if req.agent_mode=='live':
         try:job_id=store.create_job(len(req.scenarios)*req.trials*2)
         except ValueError as exc:raise HTTPException(409,str(exc))

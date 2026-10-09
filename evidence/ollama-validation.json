@@ -1,0 +1,8 @@
+{
+  "backend_tests": 38,
+  "backend_tests_passed": true,
+  "frontend_production_build": "passed",
+  "ollama_transport": "synthetic test, no real model inference",
+  "local_model": "qwen3:4b",
+  "real_mac_inference": "pending user setup"
+}
