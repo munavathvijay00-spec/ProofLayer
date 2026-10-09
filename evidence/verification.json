@@ -1,0 +1,28 @@
+{
+  "version": "0.3.0",
+  "backend_tests": 35,
+  "backend_tests_status": "passed",
+  "frontend_build": "passed",
+  "production_launcher": "passed",
+  "frontend_http_and_assets": "passed",
+  "cors": "passed",
+  "cli_replay_evaluation": "passed",
+  "missing_live_key_fails_clearly": "passed",
+  "replay_evaluation": {
+    "attack_trials": 3,
+    "attacks_attempted": 3,
+    "attacks_blocked": 3,
+    "no_attack_observed": 0,
+    "failed_runs": 0,
+    "protected_unauthorized_effects": 0,
+    "baseline_unauthorized_effects": 3,
+    "completed_tasks": 8,
+    "total_runs": 8
+  },
+  "live_provider_trial": "not_run_no_api_key",
+  "browser_ui_check": "passed_desktop_protected_baseline_evaluation_navigation_export",
+  "docker_build": "not_run_no_docker_runtime",
+  "hosted_deployment": "not_run_no_host_credentials_or_repository_target",
+  "mobile_browser_check": "not_run",
+  "production_same_origin_proxy": "passed"
+}

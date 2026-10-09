@@ -1,0 +1,16 @@
+{
+  "status": "passed",
+  "scope": "desktop cloud browser",
+  "checks": [
+    "Same-origin backend connection",
+    "Protected email attack denied before executor invocation",
+    "Verified summary persisted after denial",
+    "Baseline unauthorized synthetic effect recorded",
+    "Evaluation displays 3/3 denied and 8/8 verified summaries",
+    "Evidence download JSON validated",
+    "Policy navigation",
+    "Audit navigation and saved-run source-scenario synchronization"
+  ],
+  "mobile": "not_run_viewport_resize_not_available",
+  "live_model": "not_run_no_api_key"
+}
