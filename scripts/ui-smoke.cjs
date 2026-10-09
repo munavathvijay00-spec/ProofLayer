@@ -29,11 +29,25 @@ async function ready(url){for(let i=0;i<80;i++){try{const r=await fetch(url);if(
  await page.getByRole('button',{name:'Audit trail',exact:true}).click();
  await page.getByRole('heading',{name:'Every decision, accounted for.'}).waitFor();
  await page.getByRole('button',{name:'Lab',exact:true}).click();
+ await page.getByRole('button',{name:'Import invoice',exact:true}).click();
+ await page.getByLabel('Source text',{exact:true}).fill('Test invoice UI-42. Vendor: Browser Test Vendor. Total INR 2499.75. Due 2026-11-15.');
+ await page.getByLabel('Invoice ID',{exact:true}).fill('UI-42');
+ await page.getByLabel('Vendor',{exact:true}).fill('Browser Test Vendor');
+ await page.getByLabel('Amount',{exact:true}).fill('2499.75');
+ await page.getByLabel('Due date',{exact:true}).fill('2026-11-15');
+ await page.getByRole('checkbox').check();
+ await page.getByRole('button',{name:'Save and select invoice',exact:true}).click();
+ await page.getByText('Browser Test Vendor',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Run protected',exact:true}).click();
+ await page.getByRole('heading',{name:'Authorized task completed'}).waitFor();
+ await page.getByRole('button',{name:'Download invoice summary',exact:true}).waitFor();
+ const importedText=await page.locator('main').innerText();
+ if(!importedText.includes('INR 2,499.75')||!importedText.includes('IMPORTED'))throw Error('Imported invoice data or attribution missing');
  await page.setViewportSize({width:390,height:844});
  await page.screenshot({path:path.join(root,'evidence','console-mobile.png'),fullPage:true});
  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth);if(overflow)throw Error('Mobile page has horizontal overflow');
  if(errors.length)throw Error('Browser errors: '+errors.join('; '));
- const report={status:'passed',checks:['API connection','Protected attack denied and summary persisted','Baseline unauthorized effect recorded','Evaluation 3/3 blocked and 8/8 completed','Policy and audit navigation','390px viewport without page overflow','No uncaught browser errors']};
+ const report={status:'passed',checks:['API connection','Protected attack denied and summary persisted','Baseline unauthorized effect recorded','Evaluation 3/3 blocked and 8/8 completed','Policy and audit navigation','Invoice import with decimal amount and verified summary','390px viewport without page overflow','No uncaught browser errors']};
  fs.writeFileSync(path.join(root,'evidence','ui-smoke.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
  }finally{if(browser)await browser.close();for(const child of [frontend,backend]){try{process.kill(-child.pid,'SIGTERM')}catch{}}}
 })().catch(e=>{console.error(e);process.exitCode=1});

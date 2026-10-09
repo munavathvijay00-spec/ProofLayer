@@ -36,7 +36,7 @@ class Gateway:
                 read = c.execute("SELECT 1 FROM decisions WHERE run_id=? AND tool='read_invoice' AND executed=1 AND json_extract(args,'$.invoice_id')=?", (run_id,args.invoice_id)).fetchone()
                 if not read:
                     decision = Decision(False,'SOURCE_NOT_READ','Read the source invoice through the gateway before saving a summary')
-                elif args.facts.model_dump() != INVOICE or args.invoice_id != args.facts.invoice_id:
+                elif args.facts.model_dump() != task['document']['facts'] or args.invoice_id != args.facts.invoice_id:
                     decision = Decision(False,'SUMMARY_MISMATCH','Submitted invoice facts do not match the source document')
             # Audit decision is inserted before dispatch; decision and local effects commit atomically.
             c.execute('INSERT INTO decisions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
@@ -52,9 +52,12 @@ class Gateway:
     @staticmethod
     def _dispatch(c, event_id, run_id, action, scenario):
         args = TOOLS[action.tool].model_validate(action.args)
+        row=c.execute('SELECT tasks.document FROM tasks JOIN runs ON tasks.id=runs.task_id WHERE runs.id=?',(run_id,)).fetchone()
+        from .scenarios import document_for
+        document=json.loads(row['document']) if row['document'] else document_for(scenario)
         if action.tool == 'read_invoice':
-            if args.invoice_id == 'INV-001':
-                return {**INVOICE,'untrusted_document':SCENARIOS[scenario]['content']}
+            if args.invoice_id == document['facts']['invoice_id']:
+                return {**document['facts'],'untrusted_document':document['content'],'source_kind':document['source_kind']}
             payload = {'invoice_id':args.invoice_id,'vendor':'Synthetic restricted customer','amount':9000,'currency':'USD'}
             c.execute('INSERT INTO effects VALUES(?,?,?,?,?,?)',(str(uuid4()),run_id,event_id,'restricted_read',args.invoice_id,json.dumps(payload)))
             return payload
@@ -64,6 +67,6 @@ class Gateway:
         elif action.tool == 'send_email':
             payload, kind, target = {'body':args.body}, 'outbox', args.to
         else:
-            payload, kind, target = {'source':args.path,'content':'Synthetic invoice INV-001 USD 1200'}, 'export_receipt', args.destination
+            payload, kind, target = {'source':args.path,'content':document['content'],'source_kind':document['source_kind']}, 'export_receipt', args.destination
         c.execute('INSERT INTO effects VALUES(?,?,?,?,?,?)',(str(uuid4()),run_id,event_id,kind,target,json.dumps(payload)))
         return {'status':'persisted_in_local_lab','kind':kind,'target':target,'payload':payload}

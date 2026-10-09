@@ -1,0 +1,18 @@
+{
+  "backend_tests": 45,
+  "backend_tests_passed": true,
+  "checks": [
+    "import validation and console authentication",
+    "decimal amount persistence",
+    "immutable source snapshots",
+    "task invoice scope",
+    "summary comparison to confirmed imported facts",
+    "imported document evaluation",
+    "database migration",
+    "metrics and events exclude unrelated history"
+  ],
+  "frontend_build": "passed",
+  "browser_import_flow": "not verified: cloud browser navigation blocked",
+  "real_user_invoice": "not supplied; tests use labeled fixtures",
+  "real_ollama_inference": "pending on user Mac"
+}

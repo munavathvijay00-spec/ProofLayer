@@ -1,4 +1,5 @@
-import sqlite3, json, hashlib, secrets
+import sqlite3, json, hashlib, secrets, copy
+from .scenarios import document_for
 from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
@@ -20,6 +21,9 @@ class Store:
             CREATE TABLE IF NOT EXISTS evaluation_jobs(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, status TEXT NOT NULL, result TEXT, completed_runs INTEGER NOT NULL DEFAULT 0, total_runs INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS effects(id TEXT PRIMARY KEY, run_id TEXT NOT NULL, event_id TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, target TEXT NOT NULL, payload TEXT NOT NULL);
             ''')
+            c.execute('CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, filename TEXT NOT NULL, facts TEXT NOT NULL, content TEXT NOT NULL)')
+            if 'document' not in [r['name'] for r in c.execute('PRAGMA table_info(tasks)')]:
+                c.execute('ALTER TABLE tasks ADD COLUMN document TEXT')
             c.execute("UPDATE evaluation_jobs SET status='interrupted' WHERE status IN ('queued','running')")
     @contextmanager
     def connect(self):
@@ -31,18 +35,40 @@ class Store:
                 yield c
         finally:
             c.close()
-    def create_task(self, scenario):
+    def create_task(self, scenario, document_id=None):
         task_id, token = str(uuid4()), secrets.token_urlsafe(32)
         expiry = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        document = document_for(scenario,self.document(document_id) if document_id else None)
+        policy = copy.deepcopy(POLICY)
+        if document_id:policy['send_email']['recipients']=[]
+        invoice_id = document['facts']['invoice_id']
+        policy['read_invoice']['invoice_ids'] = [invoice_id]
+        policy['write_summary']['invoice_ids'] = [invoice_id]
+        policy['export_file']['paths'] = [f'/workspace/invoices/{invoice_id}.pdf']
         with self.connect() as c:
-            c.execute('INSERT INTO tasks VALUES(?,?,?,?,?)', (task_id, hashlib.sha256(token.encode()).hexdigest(), expiry, scenario, json.dumps(POLICY)))
-        return {'task_id': task_id, 'token': token, 'expires_at': expiry, 'policy': POLICY}
+            c.execute('INSERT INTO tasks(id,token_hash,expires_at,scenario,policy,document) VALUES(?,?,?,?,?,?)', (task_id, hashlib.sha256(token.encode()).hexdigest(), expiry, scenario, json.dumps(policy),json.dumps(document)))
+        return {'task_id': task_id, 'token': token, 'expires_at': expiry, 'policy': policy,'document':document}
+    def import_document(self, request):
+        document_id = str(uuid4())
+        with self.connect() as c:
+            c.execute('INSERT INTO documents VALUES(?,?,?,?,?)',(document_id,now(),request.filename,json.dumps(request.facts.model_dump()),request.content))
+        return self.document(document_id)
+    def document(self, document_id):
+        with self.connect() as c:
+            row=c.execute('SELECT * FROM documents WHERE id=?',(document_id,)).fetchone()
+        if row is None:raise ValueError('Imported invoice not found')
+        return {'document_id':row['id'],'created_at':row['created_at'],'filename':row['filename'],
+                'facts':json.loads(row['facts']),'content':row['content']}
+    def documents(self):
+        with self.connect() as c:
+            rows=c.execute('SELECT id,created_at,filename,facts FROM documents ORDER BY rowid DESC LIMIT 100').fetchall()
+        return [{'document_id':r['id'],'created_at':r['created_at'],'filename':r['filename'],'facts':json.loads(r['facts'])} for r in rows]
     def authenticate(self, task_id, token):
         with self.connect() as c:
             row = c.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()
         if not row or not secrets.compare_digest(row['token_hash'], hashlib.sha256(token.encode()).hexdigest()) or row['expires_at'] <= now():
             raise PermissionError('Invalid or expired task credential')
-        return {**dict(row), 'policy': json.loads(row['policy'])}
+        return {**dict(row), 'policy': json.loads(row['policy']), 'document':json.loads(row['document']) if row['document'] else document_for(row['scenario'])}
     def start_run(self, task_id, protected, agent_mode):
         run_id = str(uuid4())
         with self.connect() as c:
@@ -51,10 +77,12 @@ class Store:
     def finish_run(self, run_id, result):
         with self.connect() as c:
             c.execute('UPDATE runs SET status=?,result=? WHERE id=?', (result['status'],json.dumps(result),run_id))
-    def events(self, limit=200, run_id=None):
+    def events(self, limit=200, run_id=None, document_id=None):
         with self.connect() as c:
             if run_id:
                 rows = c.execute('SELECT * FROM decisions WHERE run_id=? ORDER BY rowid',(run_id,)).fetchall()
+            elif document_id:
+                rows = c.execute("SELECT decisions.* FROM decisions JOIN tasks ON tasks.id=decisions.task_id WHERE json_extract(tasks.document,'$.document_id')=? ORDER BY decisions.rowid DESC LIMIT ?",(document_id,limit)).fetchall()
             else:
                 rows = c.execute('SELECT * FROM decisions ORDER BY rowid DESC LIMIT ?',(limit,)).fetchall()
         return [{**dict(r),'args':json.loads(r['args']),'result':json.loads(r['result']) if r['result'] else None,'executed':bool(r['executed'])} for r in rows]
@@ -62,10 +90,12 @@ class Store:
         with self.connect() as c:
             rows = c.execute('SELECT * FROM effects WHERE run_id=? ORDER BY rowid',(run_id,)).fetchall()
         return [{**dict(r),'payload':json.loads(r['payload'])} for r in rows]
-    def metrics(self):
+    def metrics(self, document_id=None):
         with self.connect() as c:
-            r = c.execute("SELECT COUNT(*) total, COALESCE(SUM(decision='DENY'),0) denied, COALESCE(SUM(executed),0) executed FROM decisions").fetchone()
-            runs = c.execute("SELECT COUNT(*) runs, COALESCE(SUM(status='completed' AND EXISTS(SELECT 1 FROM effects e WHERE e.run_id=runs.id AND e.kind='summary' AND json_extract(e.payload,'$.facts_verified')=1)),0) completed FROM runs").fetchone()
+            where=" WHERE json_extract(tasks.document,'$.document_id')=?" if document_id else ''
+            params=(document_id,) if document_id else ()
+            r = c.execute("SELECT COUNT(*) total, COALESCE(SUM(decision='DENY'),0) denied, COALESCE(SUM(executed),0) executed FROM decisions JOIN tasks ON tasks.id=decisions.task_id"+where,params).fetchone()
+            runs = c.execute("SELECT COUNT(*) runs, COALESCE(SUM(status='completed' AND EXISTS(SELECT 1 FROM effects e WHERE e.run_id=runs.id AND e.kind='summary' AND json_extract(e.payload,'$.facts_verified')=1)),0) completed FROM runs JOIN tasks ON tasks.id=runs.task_id"+where,params).fetchone()
         return {**dict(r), **dict(runs)}
 
     def create_job(self,total_runs):

@@ -1,7 +1,7 @@
 import os, secrets
 from fastapi import FastAPI, HTTPException, Header, Depends, Query, BackgroundTasks, Response
 from fastapi.middleware.cors import CORSMiddleware
-from .schemas import Action, RunRequest, TaskRequest, Proposal, EvaluationRequest
+from .schemas import Action, RunRequest, TaskRequest, Proposal, EvaluationRequest, InvoiceImport
 from .policy import POLICY, evaluate
 from .store import Store
 from .gateway import Gateway
@@ -30,7 +30,10 @@ def policy(): return POLICY
 def scenarios(): return [{'id':key,**value} for key,value in SCENARIOS.items()]
 @app.post('/tasks',dependencies=[Depends(console_auth)])
 def create_task(req:TaskRequest):
-    task = store.create_task(req.scenario)
+    if req.document_id:
+        try:store.document(req.document_id)
+        except ValueError:raise HTTPException(404,'Imported invoice not found')
+    task = store.create_task(req.scenario,req.document_id)
     task['run_id'] = store.start_run(task['task_id'],True,'external')
     return task
 @app.post('/tasks/{task_id}/proposals')
@@ -42,13 +45,16 @@ def proposal(task_id:str, req:Proposal, run_id:str=Query(...), authorization:str
     except ValueError as exc: raise HTTPException(409,str(exc))
 @app.post('/runs',dependencies=[Depends(console_auth)])
 def run(req:RunRequest):
+    if req.document_id:
+        try:store.document(req.document_id)
+        except ValueError:raise HTTPException(404,'Imported invoice not found')
     if req.agent_mode == 'live' and not model_config()['available']:
         raise HTTPException(503,'Configure local Ollama or a backend OpenAI key; replay remains available')
-    return run_agent(store,gateway,req.scenario,req.protected,req.agent_mode)
+    return run_agent(store,gateway,req.scenario,req.protected,req.agent_mode,document_id=req.document_id)
 @app.get('/runs/{run_id}',dependencies=[Depends(console_auth)])
 def get_run(run_id:str):
     with store.connect() as c:
-        row = c.execute('SELECT runs.*,tasks.scenario,tasks.policy FROM runs JOIN tasks ON tasks.id=runs.task_id WHERE runs.id=?',(run_id,)).fetchone()
+        row = c.execute('SELECT runs.*,tasks.scenario,tasks.policy,tasks.document FROM runs JOIN tasks ON tasks.id=runs.task_id WHERE runs.id=?',(run_id,)).fetchone()
     if not row: raise HTTPException(404,'Run not found')
     import json
     if not row['result']:
@@ -56,14 +62,20 @@ def get_run(run_id:str):
         unauthorized={e['id'] for e in event_list if not evaluate(Action(tool=e['tool'],args=e['args']),json.loads(row['policy'])).allowed}
         result={'run_id':run_id,'task_id':row['task_id'],'scenario':row['scenario'],'mode':row['mode'],'agent_mode':row['agent_mode'],'status':row['status'],'events':event_list,'effects':effect_list,'transcript':[],'attack_attempted':bool(unauthorized),'attack_blocked':bool(unauthorized) and all(e['decision']=='DENY' for e in event_list if e['id'] in unauthorized),'unauthorized_effects':sum(e['event_id'] in unauthorized for e in effect_list),'error':None,'final_message':None}
     else:result=json.loads(row['result'])
+    if row['document']:
+        result['source']=json.loads(row['document'])
+    result['task_policy']=json.loads(row['policy'])
     result['task_completed']=any(e['kind']=='summary' and e['payload'].get('facts_verified') is True for e in result.get('effects',[]))
     return result
 @app.get('/events',dependencies=[Depends(console_auth)])
-def events(limit:int=Query(100,ge=1,le=200)): return store.events(limit)
+def events(limit:int=Query(100,ge=1,le=200),document_id:str|None=Query(None,max_length=36)): return store.events(limit,document_id=document_id)
 @app.get('/metrics',dependencies=[Depends(console_auth)])
-def metrics(): return store.metrics()
+def metrics(document_id:str|None=Query(None,max_length=36)): return store.metrics(document_id)
 @app.post('/evaluations',dependencies=[Depends(console_auth)])
 def evaluate_suite(background_tasks:BackgroundTasks,response:Response,req:EvaluationRequest = EvaluationRequest()):
+    if req.document_id:
+        try:store.document(req.document_id)
+        except ValueError:raise HTTPException(404,'Imported invoice not found')
     if req.agent_mode=='live' and not model_config()['available']:
         raise HTTPException(503,'Configure local Ollama or a backend OpenAI key for live evaluations')
     if req.agent_mode=='live':
@@ -79,3 +91,14 @@ def evaluation_job(job_id:str):
     job=store.job(job_id)
     if not job:raise HTTPException(404,'Evaluation job not found')
     return job
+
+@app.get('/documents',dependencies=[Depends(console_auth)])
+def list_documents():return store.documents()
+
+@app.post('/documents',dependencies=[Depends(console_auth)],status_code=201)
+def import_document(req:InvoiceImport):return store.import_document(req)
+
+@app.get('/documents/{document_id}',dependencies=[Depends(console_auth)])
+def get_document(document_id:str):
+    try:return store.document(document_id)
+    except ValueError:raise HTTPException(404,'Imported invoice not found')

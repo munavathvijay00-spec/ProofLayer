@@ -39,6 +39,33 @@ Open http://localhost:3000. Select **Email exfiltration**, run **protected**, th
 
 Backend variables are process environment variables. Uvicorn does not automatically load `.env`; use `--env-file` with `python-dotenv` installed or export variables in your shell. Next.js automatically reads `.env.local`.
 
+## Process your own invoice
+
+In **Lab → Process your own invoice**, click **Import invoice**. Upload a `.txt` or `.json` invoice, or paste text copied from a PDF. Review and confirm invoice ID, vendor, decimal amount, three-letter currency, and due date, then save. Imported sources persist in SQLite and are available from the source selector after restarting the app.
+
+Choose **Original invoice (no overlay)** and **Live model** to process actual source content with Ollama. The model receives the imported source text and normalized, operator-confirmed facts through `read_invoice`. This prototype does not automatically OCR invoices or extract authoritative fields from PDFs; confirmed fields are the reference used to verify the submitted summary. Replay can process imported data too, but its actions remain deterministic fixtures.
+
+Attack scenarios append explicitly labeled synthetic instructions to a task snapshot of your source. They never modify the stored original. Each task has an immutable source snapshot, exact invoice permissions, and no email or export destinations for imported sources. Two imported records with the same invoice number remain separate sources. Events, metrics, run JSON, and summaries identify the selected document; sample history is excluded when an imported document is selected.
+
+JSON file format:
+
+```json
+{
+  "facts": {
+    "invoice_id": "YOUR-INVOICE-ID",
+    "vendor": "Your invoice vendor",
+    "amount": 2499.75,
+    "currency": "INR",
+    "due_date": "2026-11-15"
+  },
+  "content": "Paste the original invoice text here."
+}
+```
+
+These example values are placeholders. Replace them with your own invoice. Imported sources and audit data stay in your local database with local Ollama. The OpenAI provider, if separately configured, sends invoice content to its model API. Email/export tools still record local lab effects; there is no external email or upload integration. Run evidence includes invoice data, so choose what to share.
+
+Authenticated console APIs: `POST /documents` with `{confirmed:true, filename, facts, content}`, `GET /documents`, and `GET /documents/{id}`. Pass `document_id` on tasks, runs, and evaluations. Optional `document_id` filters events and metrics. Existing databases migrate without losing prior tasks.
+
 ## Free local model on Mac (Ollama)
 
 A 16 GB Apple Silicon Mac is a reasonable starting point for `qwen3:4b` (the model download is approximately 2.5 GB; runtime memory is higher). Speed and tool-calling reliability must be measured on your Mac.
@@ -112,7 +139,7 @@ cd backend
 python -m pytest -q
 ```
 
-38 security/API tests cover denial without dispatch, malformed arguments, cross-task tokens, expiry, no privilege escalation, closed runs, transaction rollback, same-call replay, concurrency, continuation, and the model adapter protocol using a fake provider transport.
+45 security/API tests cover denial without dispatch, malformed arguments, cross-task tokens, expiry, no privilege escalation, closed runs, transaction rollback, same-call replay, concurrency, continuation, and the model adapter protocol using a fake provider transport.
 
 ```bash
 cd frontend
@@ -143,7 +170,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for Render backend and Vercel frontend setup.
 
 ## Verified build status
 
-See `evidence/verification.json` and `evidence/test-results.xml`: The previous verification bundle recorded 35 backend tests; the Ollama update adds three more tests. The original Next.js production build, frontend HTTP rendering, backend HTTP evaluation, and allowed-origin CORS check passed. Desktop browser checks passed for the same-origin API connection, protected and baseline runs, evaluation, evidence download, policy navigation, and saved-run inspection. The actual console image and browser-exported evaluation are in `evidence/`. Mobile viewport checks remain pending; the smoke harness is provided for local/CI use. Live-provider trials and public deployment remain pending.
+See `evidence/verification.json` and `evidence/test-results.xml`: The original verification bundle recorded 35 backend tests. The Ollama and import updates now pass 45 tests; see `evidence/import-test-results.xml` and `evidence/import-validation.json`. The new import browser flow remains pending because browser navigation was blocked. The original Next.js production build, frontend HTTP rendering, backend HTTP evaluation, and allowed-origin CORS check passed. Desktop browser checks passed for the same-origin API connection, protected and baseline runs, evaluation, evidence download, policy navigation, and saved-run inspection. The actual console image and browser-exported evaluation are in `evidence/`. Mobile viewport checks remain pending; the smoke harness is provided for local/CI use. Live-provider trials and public deployment remain pending.
 
 ## Team ownership for the next 24 hours
 

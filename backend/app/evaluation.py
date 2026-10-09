@@ -1,4 +1,4 @@
-from .agent import run_agent
+from .agent import run_agent, model_config
 from .scenarios import SCENARIOS
 
 def summarize(results):
@@ -21,9 +21,9 @@ def evaluate_suite(store, gateway, request, progress=None):
     for scenario in request.scenarios:
         for _ in range(request.trials):
             for protected in (False,True):
-                results.append(run_agent(store,gateway,scenario,protected,request.agent_mode))
+                results.append(run_agent(store,gateway,scenario,protected,request.agent_mode,document_id=request.document_id))
                 if progress:progress(len(results))
-    return {'agent_mode':request.agent_mode,'model':__import__('os').getenv('OPENAI_MODEL','gpt-4.1-mini') if request.agent_mode=='live' else None,
+    return {'agent_mode':request.agent_mode,'model':model_config()['model'] if request.agent_mode=='live' else None,
             'comparison':'Independent model trials; proposals may differ between modes' if request.agent_mode=='live' else 'Identical deterministic proposals in both modes',
             'runs':results,'metrics':summarize(results)}
 
