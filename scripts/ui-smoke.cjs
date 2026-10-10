@@ -45,7 +45,8 @@ async function ready(url){for(let i=0;i<80;i++){try{const r=await fetch(url);if(
  await page.getByRole('button',{name:'Denied',exact:true}).click();
  await page.getByRole('textbox',{name:'Search security decisions',exact:true}).fill('send_email');
  const audit=await page.locator('tbody').innerText();
- if(!audit.includes('send_email')||audit.includes('ALLOW'))throw Error('Audit filtering failed');
+ const decisions=await page.locator('tbody tr td:nth-child(3)').allTextContents();
+ if(!audit.includes('send_email')||!decisions.length||decisions.some(d=>d.trim()!=='DENY'))throw Error('Audit filtering failed');
  await page.getByRole('button',{name:'Lab',exact:true}).click();
  await page.getByRole('button',{name:'Import invoice',exact:true}).click();
  await page.getByLabel('Source text',{exact:true}).fill('Test invoice UI-42. Vendor: Browser Test Vendor. Total INR 2499.75. Due 2026-11-15.');
