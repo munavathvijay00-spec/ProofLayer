@@ -30,6 +30,7 @@ async function ready(url){for(let i=0;i<80;i++){try{const r=await fetch(url);if(
  await page.getByRole('button',{name:'Switch to light mode',exact:true}).click();
  if(await page.locator('html').getAttribute('data-theme')!=='light')throw Error('Theme toggle failed');
  await page.evaluate(()=>window.scrollTo(0,0));
+ await page.waitForTimeout(200);
  await page.screenshot({path:path.join(root,'evidence','console-light.png'),fullPage:true});
  await page.getByRole('button',{name:'Switch to dark mode',exact:true}).click();
  await page.getByRole('button',{name:'Run baseline',exact:true}).click();
