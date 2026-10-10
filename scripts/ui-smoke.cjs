@@ -65,7 +65,7 @@ async function ready(url){for(let i=0;i<80;i++){try{const r=await fetch(url);if(
  await page.setViewportSize({width:390,height:844});
  await page.evaluate(()=>window.scrollTo(0,0));
  await page.screenshot({path:path.join(root,'evidence','console-mobile.png'),fullPage:true});
- const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth);if(overflow)throw Error('Mobile page has horizontal overflow');
+ const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth);if(overflow){const bounds=await page.evaluate(()=>Array.from(document.querySelectorAll('body *')).map(e=>({tag:e.tagName,cls:e.className,right:e.getBoundingClientRect().right,width:e.getBoundingClientRect().width})).filter(e=>e.right>window.innerWidth+1));throw Error('Mobile page has horizontal overflow: '+JSON.stringify(bounds));}
  if(errors.length)throw Error('Browser errors: '+errors.join('; '));
  const report={status:'passed',checks:['API connection','Protected attack denied and summary persisted','Baseline unauthorized effect recorded','Evaluation 3/3 blocked and 8/8 completed','Policy and audit navigation','Invoice import with decimal amount and verified summary','390px viewport without page overflow','No uncaught browser errors']};
  fs.writeFileSync(path.join(root,'evidence','ui-smoke.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
