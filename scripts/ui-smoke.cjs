@@ -5,20 +5,31 @@ const fs=require('fs');
 const root=path.resolve(__dirname,'..');
 const backend=spawn('python3',['-m','uvicorn','app.main:app','--port','8000'],{cwd:path.join(root,'backend'),stdio:'pipe',detached:true,env:{...process.env,DB_PATH:path.join(root,'evidence','ui-test.db')}});
 const frontend=spawn('npm',['run','start','--','--hostname','127.0.0.1'],{cwd:path.join(root,'frontend'),stdio:'pipe',detached:true});
-let browser;
+let browser,page;
 frontend.stdout.on('data',d=>process.stdout.write(d));frontend.stderr.on('data',d=>process.stderr.write(d));backend.stderr.on('data',d=>process.stderr.write(d));
 async function ready(url){for(let i=0;i<80;i++){try{const r=await fetch(url);if(r.ok)return}catch{}await new Promise(r=>setTimeout(r,150));}throw Error('Server startup failed: '+url)}
 (async()=>{try{
  await Promise.all([ready('http://localhost:8000/health'),ready('http://localhost:3000')]);
  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
- const page=await browser.newPage({viewport:{width:1440,height:1050}});
+ page=await browser.newPage({viewport:{width:1440,height:1050}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('http://localhost:3000');
- await page.getByText('API connected',{exact:true}).waitFor();
+ await page.locator('.topbar').getByText('API connected',{exact:true}).waitFor();
+ await page.getByLabel('Processing scenario',{exact:true}).selectOption('email_exfiltration');
  await page.getByRole('button',{name:'Run protected',exact:true}).click();
  await page.getByRole('heading',{name:'Blocked before execution'}).waitFor();
  await page.getByText('Verified summary saved',{exact:true}).waitFor();
  await page.screenshot({path:path.join(root,'evidence','console-desktop.png'),fullPage:true});
+ await page.locator('.timeline-step').filter({hasText:'send_email'}).click();
+ await page.getByRole('dialog',{name:'Tool call inspector',exact:true}).waitFor();
+ await page.getByRole('button',{name:'decision',exact:true}).click();
+ const decision=await page.locator('.inspector-code').innerText();
+ if(!decision.includes('"executor_invoked": false'))throw Error('Inspector does not show enforced denial');
+ await page.getByRole('button',{name:'Close inspector',exact:true}).click();
+ await page.getByRole('button',{name:'Switch to light mode',exact:true}).click();
+ if(await page.locator('html').getAttribute('data-theme')!=='light')throw Error('Theme toggle failed');
+ await page.screenshot({path:path.join(root,'evidence','console-light.png'),fullPage:true});
+ await page.getByRole('button',{name:'Switch to dark mode',exact:true}).click();
  await page.getByRole('button',{name:'Run baseline',exact:true}).click();
  await page.getByRole('heading',{name:'Unauthorized effect recorded'}).waitFor();
  await page.getByRole('button',{name:'Run evaluation',exact:true}).click();
@@ -27,7 +38,11 @@ async function ready(url){for(let i=0;i<80;i++){try{const r=await fetch(url);if(
  await page.getByRole('button',{name:'Policy',exact:true}).click();
  await page.getByRole('heading',{name:'Server-controlled task permissions'}).waitFor();
  await page.getByRole('button',{name:'Audit trail',exact:true}).click();
- await page.getByRole('heading',{name:'Every decision, accounted for.'}).waitFor();
+ await page.getByRole('heading',{name:'Audit trail',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Denied',exact:true}).click();
+ await page.getByRole('textbox',{name:'Search security decisions',exact:true}).fill('send_email');
+ const audit=await page.locator('tbody').innerText();
+ if(!audit.includes('send_email')||audit.includes('ALLOW'))throw Error('Audit filtering failed');
  await page.getByRole('button',{name:'Lab',exact:true}).click();
  await page.getByRole('button',{name:'Import invoice',exact:true}).click();
  await page.getByLabel('Source text',{exact:true}).fill('Test invoice UI-42. Vendor: Browser Test Vendor. Total INR 2499.75. Due 2026-11-15.');
@@ -37,7 +52,7 @@ async function ready(url){for(let i=0;i<80;i++){try{const r=await fetch(url);if(
  await page.getByLabel('Due date',{exact:true}).fill('2026-11-15');
  await page.getByRole('checkbox').check();
  await page.getByRole('button',{name:'Save and select invoice',exact:true}).click();
- await page.getByText('Browser Test Vendor',{exact:true}).waitFor();
+ await page.locator('main').getByText('Browser Test Vendor',{exact:true}).waitFor();
  await page.getByRole('button',{name:'Run protected',exact:true}).click();
  await page.getByRole('heading',{name:'Authorized task completed'}).waitFor();
  await page.getByRole('button',{name:'Download invoice summary',exact:true}).waitFor();
@@ -49,5 +64,5 @@ async function ready(url){for(let i=0;i<80;i++){try{const r=await fetch(url);if(
  if(errors.length)throw Error('Browser errors: '+errors.join('; '));
  const report={status:'passed',checks:['API connection','Protected attack denied and summary persisted','Baseline unauthorized effect recorded','Evaluation 3/3 blocked and 8/8 completed','Policy and audit navigation','Invoice import with decimal amount and verified summary','390px viewport without page overflow','No uncaught browser errors']};
  fs.writeFileSync(path.join(root,'evidence','ui-smoke.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
- }finally{if(browser)await browser.close();for(const child of [frontend,backend]){try{process.kill(-child.pid,'SIGTERM')}catch{}}}
+ }catch(e){if(page){await page.screenshot({path:path.join(root,'evidence','ui-failure.png'),fullPage:true}).catch(()=>{});fs.writeFileSync(path.join(root,'evidence','ui-failure.txt'),await page.locator('body').innerText().catch(()=>''));}throw e;}finally{if(browser)await browser.close();for(const child of [frontend,backend]){try{process.kill(-child.pid,'SIGTERM')}catch{}}}
 })().catch(e=>{console.error(e);process.exitCode=1});
