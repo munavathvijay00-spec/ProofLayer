@@ -19,6 +19,7 @@ async function ready(url){for(let i=0;i<80;i++){try{const r=await fetch(url);if(
  await page.getByRole('button',{name:'Run protected',exact:true}).click();
  await page.getByRole('heading',{name:'Blocked before execution'}).waitFor();
  await page.getByText('Verified summary saved',{exact:true}).waitFor();
+ await page.evaluate(()=>window.scrollTo(0,0));
  await page.screenshot({path:path.join(root,'evidence','console-desktop.png'),fullPage:true});
  await page.locator('.timeline-step').filter({hasText:'send_email'}).click();
  await page.getByRole('dialog',{name:'Tool call inspector',exact:true}).waitFor();
@@ -28,6 +29,7 @@ async function ready(url){for(let i=0;i<80;i++){try{const r=await fetch(url);if(
  await page.getByRole('button',{name:'Close inspector',exact:true}).click();
  await page.getByRole('button',{name:'Switch to light mode',exact:true}).click();
  if(await page.locator('html').getAttribute('data-theme')!=='light')throw Error('Theme toggle failed');
+ await page.evaluate(()=>window.scrollTo(0,0));
  await page.screenshot({path:path.join(root,'evidence','console-light.png'),fullPage:true});
  await page.getByRole('button',{name:'Switch to dark mode',exact:true}).click();
  await page.getByRole('button',{name:'Run baseline',exact:true}).click();
@@ -59,6 +61,7 @@ async function ready(url){for(let i=0;i<80;i++){try{const r=await fetch(url);if(
  const importedText=await page.locator('main').innerText();
  if(!importedText.includes('INR 2,499.75')||!importedText.includes('IMPORTED'))throw Error('Imported invoice data or attribution missing');
  await page.setViewportSize({width:390,height:844});
+ await page.evaluate(()=>window.scrollTo(0,0));
  await page.screenshot({path:path.join(root,'evidence','console-mobile.png'),fullPage:true});
  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth);if(overflow)throw Error('Mobile page has horizontal overflow');
  if(errors.length)throw Error('Browser errors: '+errors.join('; '));
